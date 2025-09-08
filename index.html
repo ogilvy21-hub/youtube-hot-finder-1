@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>YouTube Hot Finder – Web</title>
+<style>
+  :root { --bg:#0b0e13; --card:#121821; --ink:#e8eef7; --muted:#9cb0c9; --brand:#3ea6ff; --accent:#2dd4bf; }
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto}
+  header{display:flex;gap:8px;padding:12px;border-bottom:1px solid #1f2a37;background:#0d141d;position:sticky;top:0;z-index:2}
+  .btn{background:#1a2230;color:#e8eef7;border:1px solid #263244;border-radius:10px;padding:9px 12px;cursor:pointer}
+  .btn[aria-pressed="true"]{outline:2px solid var(--brand)}
+  .container{display:flex;gap:12px;padding:12px}
+  .panel{background:var(--card);border:1px solid #1f2a37;border-radius:14px;padding:12px}
+  #left{flex:1 1 auto;min-width:0}
+  /* ▶ 미리보기 패널을 상당히 작게 */
+  #right{flex:0 0 360px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+  input[type="text"], input[type="search"], input[type="number"], select{
+    background:#0f1520;color:var(--ink);border:1px solid #273142;border-radius:10px;padding:9px 12px;min-width:240px
+  }
+  table{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed}
+  th,td{border-bottom:1px solid #202a38;padding:7px 8px;vertical-align:middle}
+  th{position:sticky;top:0;background:#0f1620;text-align:left;z-index:1}
+  tr:hover{background:#0f1620}
+  /* ▶ 한 줄 + 말줄임(…) 공통 */
+  .clip{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .w-160{width:160px}.w-200{width:200px}.w-260{width:260px}.w-320{width:320px}.w-90{width:90px}.w-110{width:110px}.w-140{width:140px}.w-80{width:80px}
+  .preview{position:relative;padding-top:56.25%;border-radius:10px;overflow:hidden;background:#0b1220;border:1px solid #1f2a37}
+  .preview iframe{position:absolute;inset:0;width:100%;height:100%}
+  footer{position:sticky;bottom:0;background:#0d141d;border-top:1px solid #1f2a37;padding:10px 12px}
+  .muted{color:var(--muted)}
+  .pill{padding:6px 10px;border-radius:999px;border:1px solid #273142;background:#0f1520}
+  .danger{border-color:#7b2631;background:#2b0d13;color:#ffb3c0}
+  .brand{border-color:#234a66;background:#0b1620;color:#bfe6ff}
+</style>
+</head>
+<body>
+
+<header>
+  <button class="btn" id="tab-handle" aria-pressed="true">채널핸들명</button>
+  <button class="btn" id="tab-keyword">키워드 입력</button>
+  <button class="btn" id="tab-settings">설정</button>
+  <button class="btn" id="tab-results">결과</button>
+</header>
+
+<div class="container">
+  <section id="left" class="panel">
+    <!-- TAB CONTENT -->
+    <div id="view-handle">
+      <div class="row">
+        <input id="handle-input" type="text" placeholder="@handle 형식, 여러 개는 쉼표로 (예: @veritasium, @Kurzgesagt)" style="min-width:460px"/>
+        <button class="btn brand" id="btn-search-handle">검색</button>
+      </div>
+    </div>
+
+    <div id="view-keyword" hidden>
+      <div class="row">
+        <input id="keyword-input" type="search" placeholder="키워드 입력, 여러 개는 쉼표로 (예: 경제 뉴스, 주식)" style="min-width:460px"/>
+        <button class="btn brand" id="btn-search-keyword">검색</button>
+      </div>
+    </div>
+
+    <div id="view-settings" hidden>
+      <div class="row">
+        <label class="pill">조회수 필터:
+          <select id="view-filter" style="margin-left:8px">
+            <option value="100k">10만 이상</option>
+            <option value="500k">50만 이상</option>
+            <option value="1m">100만 이상</option>
+            <option value="spike" selected>실시간 급등</option>
+          </select>
+        </label>
+        <span class="muted">실시간 급등 = 업로드 24시간 이내 & 시간당 조회수 ≥ 5,000</span>
+      </div>
+      <div class="row">
+        <span class="muted">※ vidIQ 공식 API가 없어 기본은 <b>조회수 ÷ 업로드 후 경과시간(시간)</b>으로 시간당 조회수를 계산합니다.</span>
+      </div>
+    </div>
+
+    <div id="view-results" hidden>
+      <div class="muted" style="margin-bottom:8px">최근 검색 결과</div>
+    </div>
+
+    <!-- SUMMARY -->
+    <div id="summary" class="muted" style="margin:6px 0 8px"></div>
+
+    <!-- RESULTS TABLE -->
+    <div style="overflow:auto; max-height:58vh; border:1px solid #1f2a37; border-radius:10px">
+      <table id="results">
+        <thead>
+          <tr>
+            <th class="w-200">채널명</th>
+            <th class="w-320">제목</th>
+            <th class="w-140">업로드일</th>
+            <th class="w-110">조회수</th>
+            <th class="w-140">시간당 조회수</th>
+            <th class="w-110">구독자수</th>
+            <th class="w-90">영상길이</th>
+            <th class="w-90">영상링크</th>
+            <th class="w-110">썸네일링크</th>
+            <th class="w-80">출처</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <aside id="right" class="panel">
+    <div class="muted" style="margin-bottom:8px">영상 미리보기</div>
+    <!-- ▶ 미리보기 크게 줄임(폭 360px 컨테이너 안) -->
+    <div class="preview" id="preview"></div>
+    <div id="preview-title" class="clip" style="margin-top:8px; font-weight:600; max-width:100%" title=""></div>
+  </aside>
+</div>
+
+<footer>
+  <div class="row">
+    <input id="api-key" type="text" placeholder="YouTube Data API v3 Key (여기에 붙여넣기)" style="min-width:360px">
+    <button class="btn" id="btn-save-key">키 저장</button>
+    <button class="btn" id="btn-clear-key">키 지우기</button>
+    <span class="muted">브라우저 <b>로컬</b>에만 저장되며 깃허브에 올라가지 않습니다.</span>
+  </div>
+  <div class="row">
+    <button class="btn" id="btn-start">시작하기(자동 새로고침)</button>
+    <button class="btn" id="btn-stop">정지하기</button>
+    <button class="btn danger" id="btn-clear">결과 지우기</button>
+    <button class="btn" id="btn-export">엑셀로 저장(CSV)</button>
+    <button class="btn" id="btn-save-job">현재작업 저장(JSON)</button>
+    <input type="file" id="load-file" accept=".json" hidden />
+    <button class="btn" id="btn-load-job">작업 불러오기</button>
+    <button class="btn" id="btn-license">라이선스관리</button>
+  </div>
+  <div class="muted">© YouTube Hot Finder – Web. For research & analytics. Use responsibly.</div>
+</footer>
+
+<script>
+/* ---------- helpers ---------- */
+const $ = sel => document.querySelector(sel);
+const fmt = n => Number(n||0).toLocaleString('en-US');
+const isoToLocal = iso => new Date(iso).toLocaleString();
+function isoDurationToHHMMSS(iso) {
+  const m = iso?.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  const h = String(parseInt(m?.[1]||0)).padStart(2,'0');
+  const mm = String(parseInt(m?.[2]||0)).padStart(2,'0');
+  const s = String(parseInt(m?.[3]||0)).padStart(2,'0');
+  return `${h}:${mm}:${s}`;
+}
+function hoursBetween(nowISO, pastISO) {
+  const diff = new Date(nowISO) - new Date(pastISO);
+  return Math.max(1, diff / (1000*60*60));
+}
+
+/* ---------- tabs ---------- */
+const tabs = [
+  ['tab-handle','view-handle'],
+  ['tab-keyword','view-keyword'],
+  ['tab-settings','view-settings'],
+  ['tab-results','view-results']
+];
+tabs.forEach(([btnId, viewId])=>{
+  $('#'+btnId).addEventListener('click', ()=>{
+    tabs.forEach(([b,v])=>{
+      $('#'+b).setAttribute('aria-pressed', b===btnId ? 'true':'false');
+      $('#'+v).hidden = v!==viewId;
+    });
+  });
+});
+
+/* ---------- state ---------- */
+let lastQuery = null;      // {mode, handles[]|queries[]}
+let timer = null;
+let rows = [];
+const apiKeyInput = $('#api-key');
+apiKeyInput.value = localStorage.getItem('yt_api_key') || '';
+const SPIKE_VPH = 5000;
+const SPIKE_MAX_HOURS = 24;
+const MAX_PAGES = 4;  // ▶ 쿼리당 최대 200개 수집
+
+/* ---------- API ---------- */
+const API = {
+  async channelByHandle(key, handle) {
+    const url = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&forHandle=${encodeURIComponent(handle)}&key=${key}`;
+    const data = await fetch(url).then(r=>r.json());
+    const ch = data.items?.[0];
+    if(!ch) throw new Error(`채널 없음: ${handle}`);
+    return { id: ch.id, title: ch.snippet.title, subs: Number(ch.statistics?.subscriberCount||0) };
+  },
+  async listRecentVideosByChannelPages(key, channelId) {
+    let token=null, all=[];
+    for (let p=0;p<MAX_PAGES;p++){
+      const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&order=date&type=video&maxResults=50${token?`&pageToken=${token}`:''}&key=${key}`;
+      const data = await fetch(url).then(r=>r.json());
+      all = all.concat((data.items||[]).map(i=>({
+        videoId: i.id.videoId,
+        publishedAt: i.snippet.publishedAt,
+        title: i.snippet.title,
+        channelTitle: i.snippet.channelTitle,
+        channelId: i.snippet.channelId,
+        thumbnailUrl: i.snippet.thumbnails?.medium?.url || i.snippet.thumbnails?.default?.url
+      })));
+      token = data.nextPageToken;
+      if(!token) break;
+    }
+    return all;
+  },
+  async searchByKeywordPages(key, q) {
+    let token=null, all=[];
+    for (let p=0;p<MAX_PAGES;p++){
+      const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&order=date&maxResults=50&q=${encodeURIComponent(q)}${token?`&pageToken=${token}`:''}&key=${key}`;
+      const data = await fetch(url).then(r=>r.json());
+      all = all.concat((data.items||[]).map(i=>({
+        videoId: i.id.videoId,
+        publishedAt: i.snippet.publishedAt,
+        title: i.snippet.title,
+        channelTitle: i.snippet.channelTitle,
+        channelId: i.snippet.channelId,
+        thumbnailUrl: i.snippet.thumbnails?.medium?.url || i.snippet.thumbnails?.default?.url
+      })));
+      token = data.nextPageToken;
+      if(!token) break;
+    }
+    return all;
+  },
+  async fillVideoDetails(key, baseRows) {
+    const ids = baseRows.map(r=>r.videoId).filter(Boolean);
+    const nowISO = new Date().toISOString();
+    for (let i=0; i<ids.length; i+=50) {
+      const slice = ids.slice(i, i+50);
+      const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${slice.join(',')}&key=${key}`;
+      const data = await fetch(url).then(r=>r.json());
+      const map = Object.create(null);
+      (data.items||[]).forEach(v=>{
+        map[v.id] = {
+          duration: v.contentDetails?.duration || 'PT0S',
+          views: Number(v.statistics?.viewCount||0)
+        };
+      });
+      baseRows = baseRows.map(r=>{
+        if(!slice.includes(r.videoId)) return r;
+        const d = map[r.videoId] || {};
+        const vph = d.views ? Math.round(d.views / hoursBetween(nowISO, r.publishedAt)) : 0;
+        return {
+          ...r,
+          duration: isoDurationToHHMMSS(d.duration),
+          viewCount: d.views||0,
+          viewsPerHour: vph,
+          videoUrl: `https://www.youtube.com/watch?v=${r.videoId}`,
+          source: 'youtube'
+        };
+      });
+    }
+    return baseRows;
+  },
+  async enrichSubscribers(key, baseRows) {
+    const ids = [...new Set(baseRows.map(r=>r.channelId).filter(Boolean))];
+    for (let i=0; i<ids.length; i+=50) {
+      const slice = ids.slice(i, i+50);
+      const url = `https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${slice.join(',')}&key=${key}`;
+      const data = await fetch(url).then(r=>r.json());
+      const dict = Object.create(null);
+      (data.items||[]).forEach(ch=>dict[ch.id] = Number(ch.statistics?.subscriberCount||0));
+      baseRows = baseRows.map(r => slice.includes(r.channelId) ? ({...r, subscriberCount: dict[r.channelId]||0}) : r );
+    }
+    return baseRows;
+  }
+};
+
+/* ---------- filter & render ---------- */
+function passesFilter(r, mode){
+  if (mode === '100k') return (r.viewCount||0) >= 100000;
+  if (mode === '500k') return (r.viewCount||0) >= 500000;
+  if (mode === '1m')   return (r.viewCount||0) >= 1000000;
+  if (mode === 'spike') {
+    const ageH = hoursBetween(new Date().toISOString(), r.publishedAt);
+    return ageH <= SPIKE_MAX_HOURS && (r.viewsPerHour||0) >= SPIKE_VPH;
+  }
+  return true;
+}
+
+function renderSummary(total, shown, mode){
+  $('#summary').textContent = `총 ${total.toLocaleString()}건 수집 / 필터 통과 ${shown.toLocaleString()}건 (필터: ${mode})`;
+}
+
+function renderTable(data){
+  const tbody = $('#tbody');
+  tbody.innerHTML = '';
+  data.forEach(r=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="clip w-200" title="${escapeHtml(r.channelTitle||'')}">${escapeHtml(r.channelTitle||'')}</td>
+      <td class="clip w-320" title="${escapeHtml(r.title||'')}">${escapeHtml(r.title||'')}</td>
+      <td class="clip w-140">${isoToLocal(r.publishedAt||'')}</td>
+      <td class="clip w-110">${fmt(r.viewCount)}</td>
+      <td class="clip w-140">${fmt(r.viewsPerHour)}</td>
+      <td class="clip w-110">${fmt(r.subscriberCount)}</td>
+      <td class="clip w-90">${r.duration||''}</td>
+      <td class="clip w-90"><a href="${r.videoUrl}" target="_blank">열기</a></td>
+      <td class="clip w-110"><a href="${r.thumbnailUrl}" target="_blank">보기</a></td>
+      <td class="clip w-80">youtube</td>`;
+    tr.addEventListener('click', ()=>showPreview(r));
+    tbody.appendChild(tr);
+  });
+}
+function showPreview(r){
+  $('#preview').innerHTML = `<iframe src="https://www.youtube.com/embed/${r.videoId}" allowfullscreen
+    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe>`;
+  const t = r.title||'';
+  const el = $('#preview-title');
+  el.textContent = t;
+  el.title = t;
+}
+function escapeHtml(s){return (s||'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]))}
+
+/* ---------- run search ---------- */
+async function runSearch(payload){
+  const key = apiKeyInput.value.trim();
+  if(!key){ alert('하단에 API Key를 입력하세요.'); return; }
+  const filterMode = ($('#view-filter').value || 'spike');
+
+  try{
+    $('#tbody').innerHTML = `<tr><td colspan="10" class="muted">수집 중…</td></tr>`;
+
+    // ◀ 여러 개 입력(쉼표) 지원
+    let base = [];
+    if (payload.mode==='handle'){
+      const handles = payload.handles;
+      // 핸들 → 채널 → 최근 영상(페이지네이션)
+      const chs = await Promise.allSettled(handles.map(h=>API.channelByHandle(key, h)));
+      const okCh = chs.filter(r=>r.status==='fulfilled').map(r=>r.value);
+      const perCh = await Promise.all(okCh.map(ch=>API.listRecentVideosByChannelPages(key, ch.id)));
+      base = perCh.flat();
+    } else {
+      const queries = payload.queries;
+      const perQ = await Promise.all(queries.map(q=>API.searchByKeywordPages(key, q)));
+      base = perQ.flat();
+    }
+
+    const total = base.length;
+
+    let filled = await API.fillVideoDetails(key, base);
+    filled = await API.enrichSubscribers(key, filled);
+
+    let shown = filled.filter(r => passesFilter(r, filterMode));
+    if (shown.length === 0 && filterMode === 'spike'){
+      shown = filled.filter(r => passesFilter(r, '100k'));
+      okToast('실시간 급등 결과가 없어 “10만 이상”으로 자동 전환했습니다.');
+    }
+
+    // 정렬: 급등은 VPH, 그 외는 조회수
+    rows = shown.sort((a,b)=> filterMode==='spike'
+      ? (b.viewsPerHour||0) - (a.viewsPerHour||0)
+      : (b.viewCount||0) - (a.viewCount||0));
+
+    renderSummary(total, rows.length, filterMode);
+    renderTable(rows);
+    if(rows[0]) showPreview(rows[0]);
+  }catch(err){
+    console.error(err);
+    alert('수집/검색 오류: ' + (err?.message||'알 수 없는 오류'));
+  }
+}
+
+/* ---------- wiring ---------- */
+$('#btn-search-handle').addEventListener('click', ()=>{
+  const raw = $('#handle-input').value.trim();
+  const handles = raw.split(/[,\s]+/).filter(Boolean);
+  if(!handles.length || !handles.every(h=>h.startsWith('@'))){
+    alert('@handle 형식으로, 여러 개는 쉼표로 입력해주세요'); return;
+  }
+  lastQuery = { mode:'handle', handles };
+  runSearch(lastQuery);
+});
+$('#btn-search-keyword').addEventListener('click', ()=>{
+  const raw = $('#keyword-input').value.trim();
+  const queries = raw.split(/[,\s]+/).filter(Boolean);
+  if(!queries.length){ alert('키워드를 입력하세요'); return; }
+  lastQuery = { mode:'keyword', queries };
+  runSearch(lastQuery);
+});
+
+$('#btn-save-key').addEventListener('click', ()=>{
+  localStorage.setItem('yt_api_key', apiKeyInput.value.trim());
+  okToast('API 키 저장됨');
+});
+$('#btn-clear-key').addEventListener('click', ()=>{
+  localStorage.removeItem('yt_api_key'); apiKeyInput.value='';
+  okToast('API 키 삭제됨');
+});
+
+$('#btn-clear').addEventListener('click', ()=>{
+  rows=[]; renderSummary(0,0,$('#view-filter').value||''); renderTable(rows);
+  $('#preview').innerHTML=''; $('#preview-title').textContent='';
+});
+$('#btn-export').addEventListener('click', ()=>{
+  if(!rows.length){ alert('내보낼 데이터가 없습니다.'); return; }
+  const headers = ['채널명','제목','업로드일','조회수','시간당 조회수','구독자수','영상길이','영상링크','썸네일링크','출처'];
+  const csv = [headers.join(',')]
+    .concat(rows.map(r=>[
+      qq(r.channelTitle), qq(r.title), qq(isoToLocal(r.publishedAt)), r.viewCount, r.viewsPerHour,
+      r.subscriberCount, r.duration, r.videoUrl, r.thumbnailUrl, 'youtube'
+    ].join(',')))
+    .join('\n');
+  downloadFile('\ufeff'+csv, 'text/csv;charset=utf-8', `hot-finder-${Date.now()}.csv`);
+});
+$('#btn-save-job').addEventListener('click', ()=>{
+  downloadFile(JSON.stringify(rows,null,2), 'application/json', `hot-finder-${Date.now()}.json`);
+});
+$('#btn-load-job').addEventListener('click', ()=>$('#load-file').click());
+$('#load-file').addEventListener('change', (e)=>{
+  const file = e.target.files[0]; if(!file) return;
+  const fr = new FileReader();
+  fr.onload = () => { try{ rows = JSON.parse(fr.result); renderSummary(rows.length, rows.length, 'loaded'); renderTable(rows); if(rows[0]) showPreview(rows[0]); }catch(e){ alert('JSON 파싱 오류'); } };
+  fr.readAsText(file);
+});
+$('#btn-license').addEventListener('click', ()=>alert('라이선스 관리: 커스텀 서버 연동 포인트입니다. (웹버전은 데모)'));
+$('#btn-start').addEventListener('click', ()=>{
+  if(!lastQuery){ alert('먼저 한 번 검색을 실행하세요.'); return; }
+  if(timer) return;
+  timer = setInterval(()=>runSearch(lastQuery), 10*60*1000); // 10분
+  okToast('자동 새로고침 시작 (10분 간격)');
+});
+$('#btn-stop').addEventListener('click', ()=>{
+  if(timer){ clearInterval(timer); timer=null; okToast('자동 새로고침 정지');}
+});
+
+/* ---------- utils ---------- */
+function qq(v){ const s = String(v??'').replace(/"/g,'""'); return `"${s}"`; }
+function downloadFile(content, type, filename){
+  const blob = new Blob([content], {type});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = filename; a.click(); URL.revokeObjectURL(a.href);
+}
+function okToast(msg){
+  const el = document.createElement('div');
+  el.textContent = msg;
+  el.style.cssText = 'position:fixed;right:12px;bottom:12px;background:#102232;color:#bfe6ff;border:1px solid #264968;padding:10px 12px;border-radius:10px;z-index:9999';
+  document.body.appendChild(el); setTimeout(()=>el.remove(), 1600);
+}
+</script>
+</body>
+</html>
